@@ -1,0 +1,27 @@
+// apps/web/src/i18n/translations/zh.json
+{
+  "common": {
+    "siteName": "AutoBazaar Pro",
+    "tagline": "中东高级汽车市场",
+    "search": "搜索",
+    "sell": "出售",
+    "messages": "消息",
+    "profile": "个人资料",
+    "language": "语言",
+    "darkMode": "深色模式",
+    "lightMode": "浅色模式"
+  },
+  "home": {
+    "heroTitle": "查找汽车、摩托车和备件",
+    "heroSubtitle": "面向伊拉克、库尔德斯坦、迪拜和中国的优质市场",
+    "featuredCars": "特色汽车",
+    "recentParts": "最新零件",
+    "viewAll": "查看全部"
+  },
+  "listing": {
+    "price": "价格",
+    "negotiable": "可议价",
+    "contactSeller": "联系卖家",
+    "details": "详细信息"
+  }
+}
