@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@auto-bazaar-pro/utils';
+import type { Route } from 'next';
 import { BarChart3, Users, ListFilter, Tags, MapPin, Car, Wrench, Flag, DollarSign, Megaphone, Bell, Languages, Settings } from 'lucide-react';
 
 const adminNav = [

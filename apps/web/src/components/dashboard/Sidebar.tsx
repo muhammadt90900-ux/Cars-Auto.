@@ -1,4 +1,4 @@
-// apps/web/src/components/dashboard/Sidebar.tsx
+'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@auto-bazaar-pro/utils';
@@ -23,7 +23,7 @@ export function Sidebar({ className }: { className?: string }) {
         {items.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
-            href={href}
+            href={href as any}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
               pathname === href
