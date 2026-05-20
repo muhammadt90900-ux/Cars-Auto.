@@ -2,7 +2,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, Input } from '@auto-bazaar-pro/ui/components';
+import { Button, Input } from '@auto-bazaar-pro/ui/src/components';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -21,7 +21,7 @@ export function LoginForm() {
 
   const onSubmit = async (data: any) => {
     await login(data.email, data.password);
-    router.push('/');
+    router.push('/dashboard');
   };
 
   return (

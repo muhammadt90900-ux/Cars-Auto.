@@ -14,5 +14,10 @@
   "devDependencies": {
     "turbo": "latest"
   },
-  "packageManager": "npm@11.9.0"
+  "packageManager": "npm@11.9.0",
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "react-hook-form": "^7.76.0",
+    "zod": "^4.4.3"
+  }
 }
