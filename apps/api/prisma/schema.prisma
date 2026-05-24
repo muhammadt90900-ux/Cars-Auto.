@@ -1,4 +1,5 @@
 // apps/api/prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,6 +8,10 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ─────────────────────────────────────────────
+// ENUMS — platform
+// ─────────────────────────────────────────────
 
 enum UserRole {
   USER
@@ -35,38 +40,231 @@ enum ListingStatus {
   REJECTED
 }
 
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  phone     String?
-  password  String?
-  name      String
-  avatar    String?
-  role      UserRole @default(USER)
-  verified  Boolean  @default(false)
-  locale    String   @default("ku")
-  googleId  String?
-  appleId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─────────────────────────────────────────────
+// ENUMS — automotive (replaces raw strings)
+// ─────────────────────────────────────────────
 
-  listings        Listing[]
-  chatsAsBuyer    Chat[]         @relation("BuyerChats")
-  chatsAsSeller   Chat[]         @relation("SellerChats")
-  messages        Message[]
-  notifications   Notification[]
-  reviewsGiven    Review[]       @relation("Reviewer")
-  reviewsReceived Review[]       @relation("Reviewee")
-  payments        Payment[]
-  reports         Report[]
+enum FuelType {
+  PETROL
+  DIESEL
+  HYBRID
+  PLUG_IN_HYBRID
+  ELECTRIC
+  LPG
+  CNG
+  HYDROGEN
 }
 
+enum TransmissionType {
+  MANUAL
+  AUTOMATIC
+  SEMI_AUTOMATIC
+  CVT
+  DUAL_CLUTCH
+}
+
+enum DrivetrainType {
+  FWD   // Front-wheel drive
+  RWD   // Rear-wheel drive
+  AWD   // All-wheel drive
+  FOUR_WD // Part-time 4WD
+}
+
+enum BodyType {
+  SEDAN
+  HATCHBACK
+  SUV
+  CROSSOVER
+  COUPE
+  CONVERTIBLE
+  WAGON
+  PICKUP_TRUCK
+  VAN
+  MINIVAN
+  BUS
+  OTHER
+}
+
+// ─────────────────────────────────────────────
+// AUTOMOTIVE REFERENCE TABLES
+// ─────────────────────────────────────────────
+
+/// Top-level brand (Toyota, BMW, Kia …)
+model CarBrand {
+  id          String      @id @default(uuid())
+  slug        String      @unique          // "toyota", "bmw" — URL-safe identifier
+  nameEn      String
+  nameAr      String
+  nameKu      String
+  nameZh      String
+  logoUrl     String?
+  countryCode String                       // ISO 3166-1 alpha-2, e.g. "JP", "DE"
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  models      CarModel[]
+
+  @@index([slug])
+  @@index([countryCode])
+}
+
+/// A model line under a brand (Camry, X5, Sportage …)
+model CarModel {
+  id          String      @id @default(uuid())
+  brandId     String
+  brand       CarBrand    @relation(fields: [brandId], references: [id])
+  slug        String                       // "camry", "x5" — unique per brand
+  nameEn      String
+  nameAr      String
+  nameKu      String
+  nameZh      String
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  generations CarModelGeneration[]
+
+  @@unique([brandId, slug])
+  @@index([brandId])
+}
+
+/// A generation / facelift of a model (e.g. Camry XV70 2018-2023)
+/// Enables accurate production-year filtering without storing years[] arrays.
+model CarModelGeneration {
+  id           String      @id @default(uuid())
+  modelId      String
+  model        CarModel    @relation(fields: [modelId], references: [id])
+  name         String?                     // Optional label, e.g. "XV70", "F30", "4th Gen"
+  yearFrom     Int                         // First production year (inclusive)
+  yearTo       Int?                        // Last production year; NULL = still in production
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  trims        CarTrim[]
+
+  @@index([modelId])
+  @@index([yearFrom, yearTo])
+}
+
+/// A specific trim / variant within a generation
+/// (e.g. Camry LE, XLE, XSE — each may differ in drivetrain, engine, etc.)
+model CarTrim {
+  id             String             @id @default(uuid())
+  generationId   String
+  generation     CarModelGeneration @relation(fields: [generationId], references: [id])
+  name           String                         // "LE", "XLE", "AMG Line" …
+  bodyType       BodyType
+  fuelType       FuelType
+  transmission   TransmissionType
+  drivetrain     DrivetrainType
+  engineCC       Int?                           // Displacement in cc, e.g. 2494
+  engineLabel    String?                        // Human label, e.g. "2.5L 4-cyl"
+  powerKw        Int?                           // Engine power in kW
+  doors          Int?
+  seats          Int?
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  listingSpecs   ListingVehicleSpec[]
+
+  @@index([generationId])
+  @@index([bodyType])
+  @@index([fuelType])
+  @@index([drivetrain])
+}
+
+// ─────────────────────────────────────────────
+// LISTING VEHICLE SPECIFICATION
+// Separates vehicle data from listing metadata.
+// A listing owns exactly one spec row (1-to-1).
+// ─────────────────────────────────────────────
+
+/// Structured vehicle data attached to a Listing.
+/// All automotive fields live here — keeps Listing lean.
+model ListingVehicleSpec {
+  id             String             @id @default(uuid())
+  listingId      String             @unique
+  listing        Listing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  // ── Structured references (preferred path) ──────────────────
+  trimId         String?
+  trim           CarTrim?           @relation(fields: [trimId], references: [id])
+
+  // ── Denormalized overrides / legacy / free-text vehicles ────
+  // Populated when a seller chooses a brand/model without a matching
+  // trim in the catalogue, or when importing external data.
+  brandId        String?
+  brand          CarBrand?          @relation(fields: [brandId], references: [id])
+  modelId        String?
+  model          CarModel?          @relation(fields: [modelId], references: [id])
+  year           Int?               // Actual production year of this vehicle
+  bodyType       BodyType?
+  fuelType       FuelType?
+  transmission   TransmissionType?
+  drivetrain     DrivetrainType?
+  engineCC       Int?
+  engineLabel    String?
+  powerKw        Int?
+  doors          Int?
+  seats          Int?
+
+  // ── Condition / usage ────────────────────────────────────────
+  condition      ListingCondition?
+  mileageKm      Int?
+  color          String?            // Free text or a future Color enum
+  vin            String?            // Vehicle Identification Number
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([brandId])
+  @@index([modelId])
+  @@index([trimId])
+  @@index([year])
+  @@index([fuelType])
+  @@index([bodyType])
+  @@index([drivetrain])
+}
+
+// ─────────────────────────────────────────────
+// SPARE PARTS COMPATIBILITY
+// Replaces incompatible String[] arrays with
+// proper relational rows.
+// ─────────────────────────────────────────────
+
+/// Compatibility entry linking a spare-part listing to
+/// specific brands, models, and year ranges.
+model PartCompatibility {
+  id          String      @id @default(uuid())
+  listingId   String
+  listing     Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  brandId     String?
+  brand       CarBrand?   @relation(fields: [brandId], references: [id])
+  modelId     String?
+  model       CarModel?   @relation(fields: [modelId], references: [id])
+  yearFrom    Int?
+  yearTo      Int?
+  notes       String?     // e.g. "only 4-cyl variants"
+
+  @@index([listingId])
+  @@index([brandId])
+  @@index([modelId])
+}
+
+// ─────────────────────────────────────────────
+// LISTING (trimmed — automotive detail offloaded)
+// ─────────────────────────────────────────────
+
 model Listing {
-  id            String           @id @default(uuid())
+  id            String            @id @default(uuid())
   type          ListingType
-  status        ListingStatus    @default(ACTIVE)
+  status        ListingStatus     @default(ACTIVE)
   userId        String
-  user          User             @relation(fields: [userId], references: [id])
+  user          User              @relation(fields: [userId], references: [id])
+
   titleKu       String
   titleAr       String
   titleEn       String
@@ -75,50 +273,38 @@ model Listing {
   descriptionAr String?
   descriptionEn String?
   descriptionZh String?
+
   price         Float
-  currency      String           @default("USD")
-  negotiable    Boolean          @default(false)
+  currency      String            @default("USD")
+  negotiable    Boolean           @default(false)
+
   locationId    String?
-  location      Location?        @relation(fields: [locationId], references: [id])
-  views         Int              @default(0)
-  featured      Boolean          @default(false)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  location      Location?         @relation(fields: [locationId], references: [id])
 
-  makeId        String?
-  modelId       String?
-  carMake       CarMake?         @relation(fields: [makeId], references: [id])
-  carModel      CarModel?        @relation(fields: [modelId], references: [id])
-  year          Int?
-  bodyType      String?
-  condition     ListingCondition?
-  mileage       Int?
-  color         String?
-  fuelType      String?
-  transmission  String?
-  engineSize    Float?
-  driveType     String?
-  doors         Int?
-  seats         Int?
-  features      String[]
+  categoryId    String?
+  category      Category?         @relation(fields: [categoryId], references: [id])
 
-  engineCC      Int?
+  partNumber    String?           // Spare parts only
 
-  categoryId          String?
-  category            Category? @relation(fields: [categoryId], references: [id])
-  partNumber          String?
-  compatibleMakes     String[]
-  compatibleModels    String[]
-  compatibleYearsFrom Int?
-  compatibleYearsTo   Int?
-  quantity            Int?
+  views         Int               @default(0)
+  featured      Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-  images Image[]
-  chats  Chat[]
+  // relations
+  vehicleSpec        ListingVehicleSpec?
+  partCompatibility  PartCompatibility[]
+  images             Image[]
+  chats              Chat[]
 
   @@index([status])
   @@index([type, status])
+  @@index([userId])
 }
+
+// ─────────────────────────────────────────────
+// UNCHANGED SUPPORTING MODELS
+// ─────────────────────────────────────────────
 
 model Image {
   id        String  @id @default(uuid())
@@ -127,28 +313,6 @@ model Image {
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
   isCover   Boolean @default(false)
   order     Int     @default(0)
-}
-
-model CarMake {
-  id      String     @id @default(uuid())
-  nameKu  String
-  nameAr  String
-  nameEn  String
-  nameZh  String
-  logoUrl String
-  country String
-  models  CarModel[]
-  listings Listing[]
-}
-
-model CarModel {
-  id       String    @id @default(uuid())
-  makeId   String
-  make     CarMake   @relation(fields: [makeId], references: [id])
-  name     String
-  years    Int[]
-  bodyType String
-  listings Listing[]
 }
 
 model Category {
@@ -177,6 +341,32 @@ model Location {
   lat         Float
   lng         Float
   listings    Listing[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  phone     String?
+  password  String?
+  name      String
+  avatar    String?
+  role      UserRole @default(USER)
+  verified  Boolean  @default(false)
+  locale    String   @default("ku")
+  googleId  String?
+  appleId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listings        Listing[]
+  chatsAsBuyer    Chat[]         @relation("BuyerChats")
+  chatsAsSeller   Chat[]         @relation("SellerChats")
+  messages        Message[]
+  notifications   Notification[]
+  reviewsGiven    Review[]       @relation("Reviewer")
+  reviewsReceived Review[]       @relation("Reviewee")
+  payments        Payment[]
+  reports         Report[]
 }
 
 model Chat {
