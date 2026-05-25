@@ -41,7 +41,7 @@ enum ListingStatus {
 }
 
 // ─────────────────────────────────────────────
-// ENUMS — automotive (replaces raw strings)
+// ENUMS — automotive
 // ─────────────────────────────────────────────
 
 enum FuelType {
@@ -64,10 +64,10 @@ enum TransmissionType {
 }
 
 enum DrivetrainType {
-  FWD   // Front-wheel drive
-  RWD   // Rear-wheel drive
-  AWD   // All-wheel drive
-  FOUR_WD // Part-time 4WD
+  FWD
+  RWD
+  AWD
+  FOUR_WD
 }
 
 enum BodyType {
@@ -89,85 +89,83 @@ enum BodyType {
 // AUTOMOTIVE REFERENCE TABLES
 // ─────────────────────────────────────────────
 
-/// Top-level brand (Toyota, BMW, Kia …)
 model CarBrand {
-  id          String      @id @default(uuid())
-  slug        String      @unique          // "toyota", "bmw" — URL-safe identifier
+  id          String    @id @default(uuid())
+  slug        String    @unique
   nameEn      String
   nameAr      String
   nameKu      String
   nameZh      String
   logoUrl     String?
-  countryCode String                       // ISO 3166-1 alpha-2, e.g. "JP", "DE"
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  countryCode String
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  models      CarModel[]
+  models              CarModel[]
+  listingSpecs        ListingVehicleSpec[]
+  partCompatibilities PartCompatibility[]
 
   @@index([slug])
   @@index([countryCode])
 }
 
-/// A model line under a brand (Camry, X5, Sportage …)
 model CarModel {
-  id          String      @id @default(uuid())
-  brandId     String
-  brand       CarBrand    @relation(fields: [brandId], references: [id])
-  slug        String                       // "camry", "x5" — unique per brand
-  nameEn      String
-  nameAr      String
-  nameKu      String
-  nameZh      String
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id        String    @id @default(uuid())
+  brandId   String
+  brand     CarBrand  @relation(fields: [brandId], references: [id])
+  slug      String
+  nameEn    String
+  nameAr    String
+  nameKu    String
+  nameZh    String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  generations CarModelGeneration[]
+  generations         CarModelGeneration[]
+  listingSpecs        ListingVehicleSpec[]
+  partCompatibilities PartCompatibility[]
 
   @@unique([brandId, slug])
   @@index([brandId])
 }
 
-/// A generation / facelift of a model (e.g. Camry XV70 2018-2023)
-/// Enables accurate production-year filtering without storing years[] arrays.
 model CarModelGeneration {
-  id           String      @id @default(uuid())
-  modelId      String
-  model        CarModel    @relation(fields: [modelId], references: [id])
-  name         String?                     // Optional label, e.g. "XV70", "F30", "4th Gen"
-  yearFrom     Int                         // First production year (inclusive)
-  yearTo       Int?                        // Last production year; NULL = still in production
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id        String    @id @default(uuid())
+  modelId   String
+  model     CarModel  @relation(fields: [modelId], references: [id])
+  name      String?
+  yearFrom  Int
+  yearTo    Int?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  trims        CarTrim[]
+  trims CarTrim[]
 
   @@index([modelId])
   @@index([yearFrom, yearTo])
 }
 
-/// A specific trim / variant within a generation
-/// (e.g. Camry LE, XLE, XSE — each may differ in drivetrain, engine, etc.)
 model CarTrim {
-  id             String             @id @default(uuid())
-  generationId   String
-  generation     CarModelGeneration @relation(fields: [generationId], references: [id])
-  name           String                         // "LE", "XLE", "AMG Line" …
-  bodyType       BodyType
-  fuelType       FuelType
-  transmission   TransmissionType
-  drivetrain     DrivetrainType
-  engineCC       Int?                           // Displacement in cc, e.g. 2494
-  engineLabel    String?                        // Human label, e.g. "2.5L 4-cyl"
-  powerKw        Int?                           // Engine power in kW
-  doors          Int?
-  seats          Int?
-  isActive       Boolean            @default(true)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id           String             @id @default(uuid())
+  generationId String
+  generation   CarModelGeneration @relation(fields: [generationId], references: [id])
+  name         String
+  bodyType     BodyType
+  fuelType     FuelType
+  transmission TransmissionType
+  drivetrain   DrivetrainType
+  engineCC     Int?
+  engineLabel  String?
+  powerKw      Int?
+  doors        Int?
+  seats        Int?
+  isActive     Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
-  listingSpecs   ListingVehicleSpec[]
+  listingSpecs ListingVehicleSpec[]
 
   @@index([generationId])
   @@index([bodyType])
@@ -177,47 +175,38 @@ model CarTrim {
 
 // ─────────────────────────────────────────────
 // LISTING VEHICLE SPECIFICATION
-// Separates vehicle data from listing metadata.
-// A listing owns exactly one spec row (1-to-1).
 // ─────────────────────────────────────────────
 
-/// Structured vehicle data attached to a Listing.
-/// All automotive fields live here — keeps Listing lean.
 model ListingVehicleSpec {
-  id             String             @id @default(uuid())
-  listingId      String             @unique
-  listing        Listing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  listingId String   @unique
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
-  // ── Structured references (preferred path) ──────────────────
-  trimId         String?
-  trim           CarTrim?           @relation(fields: [trimId], references: [id])
+  trimId   String?
+  trim     CarTrim?  @relation(fields: [trimId], references: [id])
 
-  // ── Denormalized overrides / legacy / free-text vehicles ────
-  // Populated when a seller chooses a brand/model without a matching
-  // trim in the catalogue, or when importing external data.
-  brandId        String?
-  brand          CarBrand?          @relation(fields: [brandId], references: [id])
-  modelId        String?
-  model          CarModel?          @relation(fields: [modelId], references: [id])
-  year           Int?               // Actual production year of this vehicle
-  bodyType       BodyType?
-  fuelType       FuelType?
-  transmission   TransmissionType?
-  drivetrain     DrivetrainType?
-  engineCC       Int?
-  engineLabel    String?
-  powerKw        Int?
-  doors          Int?
-  seats          Int?
+  brandId  String?
+  brand    CarBrand? @relation(fields: [brandId], references: [id])
+  modelId  String?
+  model    CarModel? @relation(fields: [modelId], references: [id])
 
-  // ── Condition / usage ────────────────────────────────────────
-  condition      ListingCondition?
-  mileageKm      Int?
-  color          String?            // Free text or a future Color enum
-  vin            String?            // Vehicle Identification Number
+  year         Int?
+  bodyType     BodyType?
+  fuelType     FuelType?
+  transmission TransmissionType?
+  drivetrain   DrivetrainType?
+  engineCC     Int?
+  engineLabel  String?
+  powerKw      Int?
+  doors        Int?
+  seats        Int?
+  condition    ListingCondition?
+  mileageKm    Int?
+  color        String?
+  vin          String?
 
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([brandId])
   @@index([modelId])
@@ -226,28 +215,25 @@ model ListingVehicleSpec {
   @@index([fuelType])
   @@index([bodyType])
   @@index([drivetrain])
+  @@index([mileageKm])
+  @@index([color])
 }
 
 // ─────────────────────────────────────────────
 // SPARE PARTS COMPATIBILITY
-// Replaces incompatible String[] arrays with
-// proper relational rows.
 // ─────────────────────────────────────────────
 
-/// Compatibility entry linking a spare-part listing to
-/// specific brands, models, and year ranges.
 model PartCompatibility {
-  id          String      @id @default(uuid())
-  listingId   String
-  listing     Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
-
-  brandId     String?
-  brand       CarBrand?   @relation(fields: [brandId], references: [id])
-  modelId     String?
-  model       CarModel?   @relation(fields: [modelId], references: [id])
-  yearFrom    Int?
-  yearTo      Int?
-  notes       String?     // e.g. "only 4-cyl variants"
+  id        String    @id @default(uuid())
+  listingId String
+  listing   Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  brandId   String?
+  brand     CarBrand? @relation(fields: [brandId], references: [id])
+  modelId   String?
+  model     CarModel? @relation(fields: [modelId], references: [id])
+  yearFrom  Int?
+  yearTo    Int?
+  notes     String?
 
   @@index([listingId])
   @@index([brandId])
@@ -255,15 +241,15 @@ model PartCompatibility {
 }
 
 // ─────────────────────────────────────────────
-// LISTING (trimmed — automotive detail offloaded)
+// LISTING
 // ─────────────────────────────────────────────
 
 model Listing {
-  id            String            @id @default(uuid())
+  id            String        @id @default(uuid())
   type          ListingType
-  status        ListingStatus     @default(ACTIVE)
+  status        ListingStatus @default(ACTIVE)
   userId        String
-  user          User              @relation(fields: [userId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
 
   titleKu       String
   titleAr       String
@@ -274,24 +260,24 @@ model Listing {
   descriptionEn String?
   descriptionZh String?
 
-  price         Float
-  currency      String            @default("USD")
-  negotiable    Boolean           @default(false)
+  price      Float
+  currency   String  @default("USD")
+  negotiable Boolean @default(false)
 
-  locationId    String?
-  location      Location?         @relation(fields: [locationId], references: [id])
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
 
-  categoryId    String?
-  category      Category?         @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
-  partNumber    String?           // Spare parts only
+  partNumber String?
 
-  views         Int               @default(0)
-  featured      Boolean           @default(false)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  views    Int     @default(0)
+  featured Boolean @default(false)
 
-  // relations
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   vehicleSpec        ListingVehicleSpec?
   partCompatibility  PartCompatibility[]
   images             Image[]
@@ -300,10 +286,13 @@ model Listing {
   @@index([status])
   @@index([type, status])
   @@index([userId])
+  @@index([locationId])
+  @@index([price])
+  @@index([featured, createdAt])
 }
 
 // ─────────────────────────────────────────────
-// UNCHANGED SUPPORTING MODELS
+// SUPPORTING MODELS
 // ─────────────────────────────────────────────
 
 model Image {
@@ -313,6 +302,8 @@ model Image {
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
   isCover   Boolean @default(false)
   order     Int     @default(0)
+
+  @@index([listingId])
 }
 
 model Category {
@@ -341,6 +332,9 @@ model Location {
   lat         Float
   lng         Float
   listings    Listing[]
+
+  @@index([country])
+  @@index([city])
 }
 
 model User {
@@ -381,6 +375,10 @@ model Chat {
   messages  Message[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@index([sellerId])
 }
 
 model Message {
@@ -394,6 +392,9 @@ model Message {
   mediaUrl  String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
+
+  @@index([chatId])
+  @@index([senderId])
 }
 
 model Notification {
@@ -406,6 +407,8 @@ model Notification {
   data      Json?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId, read])
 }
 
 model Review {
@@ -417,6 +420,8 @@ model Review {
   rating     Int
   comment    String
   createdAt  DateTime @default(now())
+
+  @@index([revieweeId])
 }
 
 model Payment {
@@ -428,6 +433,8 @@ model Payment {
   currency  String
   status    String
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Report {
@@ -439,4 +446,7 @@ model Report {
   reason     String
   status     String   @default("pending")
   createdAt  DateTime @default(now())
+
+  @@index([reporterId])
+  @@index([targetType, targetId])
 }
