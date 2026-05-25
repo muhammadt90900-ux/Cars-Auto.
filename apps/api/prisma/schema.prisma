@@ -352,6 +352,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ── Security fields ──────────────────────────────────────────────────────
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  passwordChangedAt   DateTime?
+
   listings        Listing[]
   chatsAsBuyer    Chat[]         @relation("BuyerChats")
   chatsAsSeller   Chat[]         @relation("SellerChats")
@@ -361,6 +366,21 @@ model User {
   reviewsReceived Review[]       @relation("Reviewee")
   payments        Payment[]
   reports         Report[]
+  refreshTokens   RefreshToken[]
+}
+
+// ── Refresh token store ─────────────────────────────────────────────────────
+// Raw tokens are NEVER stored — only their SHA-256 hash.
+model RefreshToken {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique  // SHA-256(rawToken)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Chat {
