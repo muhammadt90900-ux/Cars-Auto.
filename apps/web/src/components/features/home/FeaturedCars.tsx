@@ -1,10 +1,14 @@
 'use client';
 // components/features/home/FeaturedCars.tsx
+// Optimised: Next.js Image, memoised CarCard, no unnecessary re-renders
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { memo, useState, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { MapPin, Gauge, Fuel, Star, Heart, ArrowLeft, Zap, Shield } from 'lucide-react';
+import { listingsApi } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 
 /* ── Skeleton ─────────────────────────────────────────────────── */
 function CarCardSkeleton() {
@@ -12,7 +16,8 @@ function CarCardSkeleton() {
     <div className="rounded-2xl overflow-hidden
                     bg-white dark:bg-[#0b1525]
                     border border-slate-100 dark:border-white/[0.06]
-                    shadow-[var(--shadow-md)]">
+                    shadow-[var(--shadow-md)]"
+         aria-hidden="true">
       <div className="h-52 skeleton" />
       <div className="p-4 space-y-3">
         <div className="h-4 skeleton rounded-lg w-3/4" />
@@ -31,13 +36,22 @@ function CarCardSkeleton() {
   );
 }
 
-/* ── Car Card ─────────────────────────────────────────────────── */
-function CarCard({ car }: { car: any }) {
-  const [liked,    setLiked]    = useState(false);
+/* ── Car Card — memoised to prevent parent re-renders ──────────── */
+const CarCard = memo(function CarCard({ car }: { car: any }) {
+  const [liked, setLiked] = useState(false);
   const [imgError, setImgError] = useState(false);
 
+  const toggleLike = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setLiked((v) => !v);
+  }, []);
+
+  const handleImgError = useCallback(() => setImgError(true), []);
+
+  const imageUrl = car.images?.[0] || null;
+
   return (
-    <Link href={`/cars/${car.id}`} className="block group">
+    <Link href={`/cars/${car.id}`} className="block group" prefetch={false}>
       <article className="card-premium overflow-hidden h-full flex flex-col
                           rounded-2xl border border-slate-100 dark:border-white/[0.06]
                           bg-white dark:bg-[#0b1525]
@@ -48,29 +62,30 @@ function CarCard({ car }: { car: any }) {
 
         {/* Image area */}
         <div className="relative h-52 overflow-hidden bg-slate-100 dark:bg-[#060f1a] flex-shrink-0">
-          {!imgError ? (
-            <img
-              src={car.images?.[0] || '/placeholder.jpg'}
-              alt={car.title}
-              className="w-full h-full object-cover
-                         transition-transform duration-500 ease-out
-                         group-hover:scale-[1.06]"
-              onError={() => setImgError(true)}
+          {imageUrl && !imgError ? (
+            <Image
+              src={imageUrl}
+              alt={car.titleEn ?? car.titleKu ?? 'Car listing'}
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+              className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
+              onError={handleImgError}
+              loading="lazy"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center
                             bg-gradient-to-br from-slate-100 to-slate-200
                             dark:from-[#0b1525] dark:to-[#0f1c2e]">
-              <span className="text-6xl opacity-20">🚗</span>
+              <span className="text-6xl opacity-20" aria-hidden="true">🚗</span>
             </div>
           )}
 
-          {/* Gradient overlay on hover */}
+          {/* Gradient overlay */}
           <div className="absolute inset-0
                           bg-gradient-to-t from-black/60 via-transparent to-transparent
                           opacity-0 group-hover:opacity-100 transition-opacity duration-400" />
 
-          {/* Badges top-end */}
+          {/* Badges */}
           <div className="absolute top-3 end-3 flex flex-col gap-1.5 items-end">
             {car.featured && (
               <span className="inline-flex items-center gap-1
@@ -101,8 +116,9 @@ function CarCard({ car }: { car: any }) {
 
           {/* Heart button */}
           <button
-            onClick={e => { e.preventDefault(); setLiked(v => !v); }}
+            onClick={toggleLike}
             aria-label={liked ? 'Remove from favorites' : 'Add to favorites'}
+            aria-pressed={liked}
             className={`absolute top-3 start-3 w-8 h-8 rounded-full
                         flex items-center justify-center
                         backdrop-blur-md transition-all duration-200
@@ -129,36 +145,33 @@ function CarCard({ car }: { car: any }) {
         <div className="p-4 flex flex-col flex-1" dir="rtl">
           <h3 className="font-semibold text-[var(--text-primary)] text-sm leading-snug mb-1
                          truncate group-hover:text-[#c9a84c] transition-colors duration-200">
-            {car.title || 'ئۆتۆمبێل'}
+            {car.titleKu ?? car.titleEn ?? 'ئۆتۆمبێل'}
           </h3>
 
-          {car.city && (
+          {car.location?.nameKu && (
             <div className="flex items-center gap-1 text-[var(--text-muted)] text-xs mb-3">
               <MapPin className="w-3 h-3 flex-shrink-0" />
-              <span>{car.city}</span>
+              <span>{car.location.nameKu}</span>
             </div>
           )}
 
-          {/* Specs */}
           <div className="flex items-center gap-3 mb-4">
-            {car.mileage && (
+            {car.vehicleSpec?.mileageKm && (
               <div className="flex items-center gap-1 text-[var(--text-faint)] text-xs">
                 <Gauge className="w-3 h-3" />
-                <span className="tabular-nums">{(car.mileage / 1000).toFixed(0)}k km</span>
+                <span className="tabular-nums">{(car.vehicleSpec.mileageKm / 1000).toFixed(0)}k km</span>
               </div>
             )}
-            {car.fuelType && (
+            {car.vehicleSpec?.fuelType && (
               <div className="flex items-center gap-1 text-[var(--text-faint)] text-xs">
                 <Fuel className="w-3 h-3" />
-                <span>{car.fuelType}</span>
+                <span>{car.vehicleSpec.fuelType}</span>
               </div>
             )}
           </div>
 
-          {/* Divider */}
           <div className="h-px bg-slate-100 dark:bg-white/[0.06] mb-3 mt-auto" />
 
-          {/* Price row */}
           <div className="flex items-center justify-between">
             <div>
               <span className="text-lg font-extrabold text-gold tabular-nums font-display">
@@ -171,7 +184,6 @@ function CarCard({ car }: { car: any }) {
               )}
             </div>
 
-            {/* Arrow CTA */}
             <div className="w-8 h-8 rounded-full
                             border border-[#c9a84c]/25
                             flex items-center justify-center
@@ -187,21 +199,18 @@ function CarCard({ car }: { car: any }) {
       </article>
     </Link>
   );
-}
+});
 
 /* ── FeaturedCars ─────────────────────────────────────────────── */
 export function FeaturedCars() {
-  const [cars,    setCars]    = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.listings.list({ type: 'car', limit: '8' }),
+    queryFn: () => listingsApi.getAll({ type: 'car', limit: '8' }),
+    staleTime: 60_000,
+    select: (res: any) => (res?.data ?? res ?? []).slice(0, 4),
+  });
 
-  useEffect(() => {
-    api.listings.getAll({ type: 'car', limit: '8' })
-      .then(res => setCars(res.data || res || []))
-      .catch(() => setCars([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {Array.from({ length: 4 }).map((_, i) => <CarCardSkeleton key={i} />)}
@@ -209,10 +218,10 @@ export function FeaturedCars() {
     );
   }
 
-  if (cars.length === 0) {
+  if (!data?.length) {
     return (
       <div className="text-center py-20" dir="rtl">
-        <div className="text-6xl mb-5 opacity-15">🚗</div>
+        <div className="text-6xl mb-5 opacity-15" aria-hidden="true">🚗</div>
         <p className="text-[var(--text-muted)] text-sm font-medium mb-1">
           هیچ ئۆتۆمبێلێک نەدۆزرایەوە
         </p>
@@ -223,7 +232,7 @@ export function FeaturedCars() {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-      {cars.slice(0, 4).map((car: any) => <CarCard key={car.id} car={car} />)}
+      {data.map((car: any) => <CarCard key={car.id} car={car} />)}
     </div>
   );
 }
