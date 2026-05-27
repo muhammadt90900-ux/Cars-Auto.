@@ -1,69 +1,76 @@
-import { create } from 'zustand';
-import { api } from '@/lib/api';
+// apps/web/src/store/auth.store.ts
+// Optimised: no localStorage for access tokens (security); token lives in memory via api.ts.
+// Zustand persist is used ONLY for the user profile (non-sensitive).
 
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  avatar?: string;
-  role: string;
-  verified: boolean;
-  locale: string;
-}
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { authApi, setAccessToken, getAccessToken, type AuthUser } from '@/lib/api';
 
 interface AuthState {
-  user: User | null;
-  token: string | null;
+  user: AuthUser | null;
   isLoading: boolean;
+  isHydrated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; password: string; name: string; phone?: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loadUser: () => Promise<void>;
+  setHydrated: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: typeof window !== 'undefined' ? localStorage.getItem('access_token') : null,
-  isLoading: false,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      isLoading: false,
+      isHydrated: false,
 
-  login: async (email, password) => {
-    set({ isLoading: true });
-    try {
-      const res = await api.auth.login({ email, password });
-      localStorage.setItem('access_token', res.access_token);
-      const user = await api.auth.me();
-      set({ user, token: res.access_token });
-    } finally {
-      set({ isLoading: false });
-    }
-  },
+      setHydrated: () => set({ isHydrated: true }),
 
-  register: async (data) => {
-    set({ isLoading: true });
-    try {
-      const res = await api.auth.register(data);
-      localStorage.setItem('access_token', res.access_token);
-      const user = await api.auth.me();
-      set({ user, token: res.access_token });
-    } finally {
-      set({ isLoading: false });
-    }
-  },
+      login: async (email, password) => {
+        set({ isLoading: true });
+        try {
+          const res = await authApi.login({ email, password });
+          set({ user: res.user });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
 
-  logout: () => {
-    localStorage.removeItem('access_token');
-    set({ user: null, token: null });
-  },
+      register: async (data) => {
+        set({ isLoading: true });
+        try {
+          const res = await authApi.register(data);
+          set({ user: res.user });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
 
-  loadUser: async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    try {
-      const user = await api.auth.me();
-      set({ user, token });
-    } catch {
-      localStorage.removeItem('access_token');
-      set({ user: null, token: null });
-    }
-  },
-}));
+      logout: async () => {
+        await authApi.logout();
+        set({ user: null });
+      },
+
+      loadUser: async () => {
+        // Only refetch if we have an access token in memory
+        if (!getAccessToken()) return;
+        try {
+          const user = await authApi.me();
+          set({ user });
+        } catch {
+          setAccessToken(null);
+          set({ user: null });
+        }
+      },
+    }),
+    {
+      name: 'auth-store',
+      storage: createJSONStorage(() => localStorage),
+      // Only persist non-sensitive user profile data
+      partialize: (state) => ({ user: state.user }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHydrated();
+      },
+    },
+  ),
+);
