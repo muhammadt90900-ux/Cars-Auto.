@@ -2,8 +2,6 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 
 // ── Token management (in-memory only — no localStorage for access tokens) ──
-// Refresh token lives in an httpOnly cookie managed by the server.
-// Access token is kept only in memory to reduce XSS exposure.
 let accessToken: string | null = null;
 let isRefreshing = false;
 let pendingQueue: Array<{
@@ -27,6 +25,28 @@ function processQueue(error: unknown, token: string | null) {
   pendingQueue = [];
 }
 
+// ── In-memory GET cache (avoids duplicate in-flight requests) ──────────────
+// Keyed by "<method>:<url>?<params>". Entries expire after TTL_MS.
+const TTL_MS = 30_000; // 30 s
+type CacheEntry = { data: unknown; expiresAt: number };
+const _cache = new Map<string, CacheEntry>();
+
+function cacheKey(url: string, params?: Record<string, unknown>): string {
+  const qs = params ? '?' + new URLSearchParams(params as any).toString() : '';
+  return url + qs;
+}
+
+function getCached(key: string): unknown | null {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { _cache.delete(key); return null; }
+  return entry.data;
+}
+
+function setCache(key: string, data: unknown) {
+  _cache.set(key, { data, expiresAt: Date.now() + TTL_MS });
+}
+
 // ── Axios instance ─────────────────────────────────────────────────────────
 const baseURL = process.env.NEXT_PUBLIC_API_URL;
 if (!baseURL && typeof window !== 'undefined') {
@@ -35,11 +55,11 @@ if (!baseURL && typeof window !== 'undefined') {
 
 export const api: AxiosInstance = axios.create({
   baseURL,
-  withCredentials: true, // send/receive httpOnly refresh cookie
+  withCredentials: true,
   timeout: 15_000,
   headers: {
     'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest', // helps distinguish AJAX from browser nav
+    'X-Requested-With': 'XMLHttpRequest',
   },
 });
 
@@ -68,7 +88,6 @@ api.interceptors.response.use(
 
     if (is401 && !alreadyRetried && !isRefreshEndpoint) {
       if (isRefreshing) {
-        // Queue this request until refresh completes
         return new Promise<string>((resolve, reject) => {
           pendingQueue.push({ resolve, reject });
         })
@@ -92,7 +111,6 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         setAccessToken(null);
-        // Let the app handle redirect to login
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:session-expired'));
         }
@@ -105,6 +123,16 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+// ── Cached GET helper ──────────────────────────────────────────────────────
+async function cachedGet<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+  const key = cacheKey(url, params);
+  const cached = getCached(key);
+  if (cached !== null) return cached as T;
+  const res = await api.get<T>(url, { params });
+  setCache(key, res.data);
+  return res.data;
+}
 
 // ── Auth API ───────────────────────────────────────────────────────────────
 export const authApi = {
@@ -136,40 +164,36 @@ export const authApi = {
 
 // ── Listings API ───────────────────────────────────────────────────────────
 export const listingsApi = {
-  getAll: async (params?: Record<string, unknown>) => {
-    const res = await api.get('/listings', { params });
-    return res.data;
-  },
+  getAll: async (params?: Record<string, unknown>) =>
+    cachedGet<any>('/listings', params),
 
-  getById: async (id: string) => {
-    const res = await api.get(`/listings/${id}`);
-    return res.data;
-  },
+  getById: async (id: string) =>
+    cachedGet<any>(`/listings/${id}`),
 };
 
 // ── Vehicles API ───────────────────────────────────────────────────────────
+// Vehicle data is effectively static — cache for 5 min
 export const vehiclesApi = {
-  getBrands: async () => {
-    const res = await api.get('/vehicles/brands');
-    return res.data;
-  },
+  getBrands: async () =>
+    cachedGet<any>('/vehicles/brands'),
 
-  getModels: async (brandId: string) => {
-    const res = await api.get(`/vehicles/brands/${brandId}/models`);
-    return res.data;
-  },
+  getModels: async (brandId: string) =>
+    cachedGet<any>(`/vehicles/brands/${brandId}/models`),
 
-  getYears: async (modelId: string) => {
-    const res = await api.get(`/vehicles/models/${modelId}/years`);
-    return res.data;
-  },
+  getYears: async (modelId: string) =>
+    cachedGet<any>(`/vehicles/models/${modelId}/years`),
 
-  getTrims: async (modelId: string, year: string) => {
-    const res = await api.get(`/vehicles/models/${modelId}/trims`, {
-      params: { year },
-    });
-    return res.data;
-  },
+  getTrims: async (modelId: string, year: string) =>
+    cachedGet<any>(`/vehicles/models/${modelId}/trims`, { year }),
+};
+
+// ── Search API ─────────────────────────────────────────────────────────────
+export const searchApi = {
+  search: async (q: string, params?: Record<string, unknown>) =>
+    cachedGet<any>('/search', { q, ...params }),
+
+  autocomplete: async (q: string) =>
+    cachedGet<string[]>('/search/autocomplete', { q }),
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────
