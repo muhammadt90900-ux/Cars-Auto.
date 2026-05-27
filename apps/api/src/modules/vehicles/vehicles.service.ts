@@ -16,7 +16,7 @@ export class VehiclesService {
   async getBrands({ q }: BrandQueryDto) {
     const key = `vehicles:brands:${q ?? ''}`;
     return this.cache.getOrSet(key, async () => {
-      const where: any = { active: true };
+      const where: any = { isActive: true };
       if (q?.trim()) {
         where.OR = [
           { nameEn: { contains: q.trim(), mode: 'insensitive' } },
@@ -24,13 +24,13 @@ export class VehiclesService {
           { nameKu: { contains: q.trim(), mode: 'insensitive' } },
         ];
       }
-      const brands = await this.prisma.vehicleBrand.findMany({
+      const brands = await this.prisma.carBrand.findMany({
         where,
         orderBy: { nameEn: 'asc' },
         select: {
           id: true, nameEn: true, nameAr: true, nameKu: true,
           logo: true, slug: true,
-          _count: { select: { listings: { where: { status: 'ACTIVE' } } } },
+          _count: { select: { listingSpecs: { where: { status: 'ACTIVE' } } } },
         },
       });
       return brands.map((b) => ({
@@ -51,7 +51,7 @@ export class VehiclesService {
           { nameKu: { contains: q.trim(), mode: 'insensitive' } },
         ];
       }
-      const models = await this.prisma.vehicleModel.findMany({
+      const models = await this.prisma.carModel.findMany({
         where,
         orderBy: { nameEn: 'asc' },
         select: {
@@ -86,7 +86,7 @@ export class VehiclesService {
           { nameKu: { contains: q.trim(), mode: 'insensitive' } },
         ];
       }
-      return this.prisma.vehicleTrim.findMany({
+      await this.prisma.carTrim.findMany({
         where,
         orderBy: { nameEn: 'asc' },
         select: {
