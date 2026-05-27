@@ -5,6 +5,5 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "tsConfigPath": "tsconfig.json"
-    "plugins": ["tsconfig-paths/register"]
   }
 }
