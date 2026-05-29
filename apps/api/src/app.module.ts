@@ -14,6 +14,7 @@ import { SearchModule } from './modules/search/search.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AppCacheModule } from './common/cache/cache.module';
+import { DealersModule } from './modules/dealers/dealers.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AppCacheModule } from './common/cache/cache.module';
     PaymentsModule,
     SearchModule,
     VehiclesModule,
+    DealersModule,
   ],
 })
 export class AppModule {}
