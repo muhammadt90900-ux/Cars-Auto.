@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { AuthModule } from '@nestjs/Module';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -31,9 +31,12 @@ import { PrismaModule } from '../../common/prisma/prisma.module';
     }),
 
     // ── Per-route rate limiting (stricter for auth endpoints) ──────────────
-    AuthModule([
-      { name: 'auth', ttl: 60_000, limit: 10 }, // 10 req / min on auth routes
-    ]),
+   ThrottlerModule.forRoot([
+  {
+    ttl: 60000,
+    limit: 10,
+  },
+])
 
     UsersModule,
     PrismaModule,
