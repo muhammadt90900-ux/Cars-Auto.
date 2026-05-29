@@ -2,6 +2,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ListingsModule } from './modules/listings/listings.module';
@@ -32,6 +33,17 @@ import { DealersModule } from './modules/dealers/dealers.module';
           limit: cfg.get<number>('THROTTLE_LIMIT', 120),
         },
       ],
+    }),
+
+    // ── BullMQ global registration (Redis-backed queues) ──────────────────
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => ({
+        connection: {
+          url: cfg.get<string>('REDIS_URL', 'redis://localhost:6379'),
+        },
+      }),
     }),
 
     // Global in-process cache (no Redis required)
