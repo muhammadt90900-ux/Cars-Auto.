@@ -4,41 +4,60 @@ import {
   Body, Param, Query, UseGuards, Request,
   ParseUUIDPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { IsOptional, IsString, IsNumberString, IsEnum, MaxLength } from 'class-validator';
 import { ListingsService } from './listings.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CreateListingDto } from './dto/create-listing.dto';
+import { ListingType, ListingCondition, FuelType, TransmissionType } from '@prisma/client';
+
+// FIX: Typed query DTO replaces `@Query() query: any` which accepted arbitrary strings
+class ListingQueryDto {
+  @IsOptional() @IsEnum(ListingType)          type?: string;
+  @IsOptional() @IsNumberString()             minPrice?: string;
+  @IsOptional() @IsNumberString()             maxPrice?: string;
+  @IsOptional() @IsString() @MaxLength(40)    locationId?: string;
+  @IsOptional() @IsString() @MaxLength(40)    brandId?: string;
+  @IsOptional() @IsString() @MaxLength(40)    modelId?: string;
+  @IsOptional() @IsString() @MaxLength(40)    trimId?: string;
+  @IsOptional() @IsNumberString()             year?: string;
+  @IsOptional() @IsNumberString()             minYear?: string;
+  @IsOptional() @IsNumberString()             maxYear?: string;
+  @IsOptional() @IsEnum(ListingCondition)     condition?: string;
+  @IsOptional() @IsEnum(FuelType)             fuelType?: string;
+  @IsOptional() @IsEnum(TransmissionType)     transmission?: string;
+  @IsOptional() @IsString() @MaxLength(40)    color?: string;
+  @IsOptional() @IsNumberString()             minMileage?: string;
+  @IsOptional() @IsNumberString()             maxMileage?: string;
+  @IsOptional() @IsNumberString()             page?: string;
+  @IsOptional() @IsNumberString()             limit?: string;
+}
 
 @Controller('listings')
 export class ListingsController {
   constructor(private readonly listingsService: ListingsService) {}
 
-  /** GET /listings — public paginated list with filters */
   @Get()
-  findAll(@Query() query: any) {
+  findAll(@Query() query: ListingQueryDto) {
     return this.listingsService.findAll(query);
   }
 
-  /** GET /listings/my — authenticated user's own listings */
   @UseGuards(JwtAuthGuard)
   @Get('my')
   myListings(@Request() req: any) {
     return this.listingsService.myListings(req.user.userId);
   }
 
-  /** GET /listings/:id — single listing detail + view increment */
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.listingsService.findOne(id);
   }
 
-  /** POST /listings — create a new listing */
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@Request() req: any, @Body() dto: CreateListingDto) {
     return this.listingsService.create({ ...dto, userId: req.user.userId });
   }
 
-  /** PATCH /listings/:id — partial update (owner only) */
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
@@ -49,7 +68,6 @@ export class ListingsController {
     return this.listingsService.update(id, req.user.userId, dto);
   }
 
-  /** DELETE /listings/:id — soft or hard delete (owner only) */
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
