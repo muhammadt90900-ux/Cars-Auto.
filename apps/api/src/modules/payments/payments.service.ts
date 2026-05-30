@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
@@ -18,7 +18,13 @@ export class PaymentsService {
     });
   }
 
-  async confirmPayment(id: string) {
+  // FIX: Verify payment belongs to the requesting user before confirming
+  async confirmPayment(id: string, requestingUserId: string) {
+    const payment = await this.prisma.payment.findUnique({ where: { id } });
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (payment.userId !== requestingUserId) {
+      throw new ForbiddenException('Access denied');
+    }
     return this.prisma.payment.update({
       where: { id },
       data: { status: 'completed' },
