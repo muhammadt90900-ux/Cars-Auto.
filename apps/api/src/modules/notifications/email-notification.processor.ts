@@ -3,7 +3,7 @@ import { Job, UnrecoverableError } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { MailerService } from '@nestjs-modules/mailer';
+import * as nodemailer from 'nodemailer';
 
 interface DeliverPayload {
   notificationId: string;
@@ -17,11 +17,17 @@ interface DeliverPayload {
 @Processor('notifications')
 export class EmailNotificationProcessor extends WorkerHost {
   private readonly logger = new Logger(EmailNotificationProcessor.name);
+  private readonly transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
 
   constructor(
     private notificationsService: NotificationsService,
     private prisma: PrismaService,
-    private mailer: MailerService,
   ) {
     super();
   }
@@ -39,16 +45,22 @@ export class EmailNotificationProcessor extends WorkerHost {
     // ----- Email -----
     if (prefs.emailEnabled && this.shouldEmailForType(type)) {
       try {
-        await this.mailer.sendMail({
+        await this.transporter.sendMail({
+          from: `"Cars Auto" <${process.env.GMAIL_USER}>`,
           to: user.email,
           subject: title,
-          template: 'notification', // Handlebars / EJS template
-          context: { name: user.name, title, body, data, type },
+          html: `
+            <div style="font-family: Arial; direction: rtl; padding: 24px;">
+              <h2 style="color: #2563eb;">Cars Auto</h2>
+              <p>مەرحەبا ${user.name}،</p>
+              <h3>${title}</h3>
+              <p>${body}</p>
+            </div>
+          `,
         });
         this.logger.log(`Email sent to ${user.email} for notification type=${type}`);
       } catch (err) {
         this.logger.error('Email delivery failed', err);
-        // Let BullMQ retry
         throw err;
       }
     }
@@ -59,7 +71,6 @@ export class EmailNotificationProcessor extends WorkerHost {
     }
   }
 
-  /** Email only for high-signal events to avoid inbox fatigue */
   private shouldEmailForType(type: string): boolean {
     const EMAIL_TYPES = new Set([
       'offer_received',
