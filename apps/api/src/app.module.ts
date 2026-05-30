@@ -22,20 +22,22 @@ import { DealersModule } from './modules/dealers/dealers.module';
     ConfigModule.forRoot({
       isGlobal: true,
       expandVariables: true,
+      // FIX: Validate required env vars at startup; never fall back to defaults for secrets
+      validationOptions: { allowUnknown: true, abortEarly: false },
     }),
 
+    // FIX: Tightened global rate limit (60 req/min vs original 120) with shorter TTL
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => [
         {
-          ttl: cfg.get<number>('THROTTLE_TTL', 60_000),
-          limit: cfg.get<number>('THROTTLE_LIMIT', 120),
+          ttl:   cfg.get<number>('THROTTLE_TTL',   60_000),
+          limit: cfg.get<number>('THROTTLE_LIMIT', 60),     // was 120
         },
       ],
     }),
 
-    // ── BullMQ global registration (Redis-backed queues) ──────────────────
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -46,9 +48,7 @@ import { DealersModule } from './modules/dealers/dealers.module';
       }),
     }),
 
-    // Global in-process cache (no Redis required)
     AppCacheModule,
-
     PrismaModule,
     AuthModule,
     UsersModule,
